@@ -13,6 +13,7 @@ from naucse.urlconverters import register_url_converters, DEFAULT_COURSE_SLUG
 from naucse.templates import setup_jinja_env
 
 import mkepub
+import bs4
 
 routes = []
 def route(*args, **kwargs):
@@ -229,8 +230,10 @@ def course_as_epub(course_slug, year=None):
 
     # logger.debug(course.base_path)
 
+    epub_path = str(course.base_path) + '/' + course.slug + '.epub'
 
-    os.remove(str(course.base_path) + '/' + course.slug + '.epub')
+    if (os.path.exists(epub_path)):
+        os.remove(epub_path)
 
     epub_course = mkepub.Book(course.title, language='cs')
 
@@ -273,7 +276,9 @@ def course_as_epub(course_slug, year=None):
 
             #lesson_chapter_html = str(chap_tree)
 
-            epub_course.add_page(material.title or 'bez titulu', lesson_chapter_html_raw)
+            epub_course.add_page(material.title or 'bez titulu',
+                    lesson_chapter_html_raw,
+                    parent = head_chapter)
 
     epub_course.save(str(course.base_path) +  '/' + course.slug + '.epub')
 
