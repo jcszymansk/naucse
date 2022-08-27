@@ -2,6 +2,7 @@ import datetime
 from pathlib import Path, PurePosixPath
 import calendar
 import os
+import tempfile
 
 from flask import Flask, render_template, jsonify, Response, abort, g, redirect
 from flask import send_file
@@ -16,6 +17,8 @@ import mkepub
 
 import lxml.html as html
 
+import logging
+
 
 routes = []
 def route(*args, **kwargs):
@@ -24,6 +27,7 @@ def route(*args, **kwargs):
         return func
     return decorator
 
+logger = logging.getLogger(__name__)
 
 def make_app():
     app = Flask('naucse')
@@ -230,11 +234,13 @@ def course_as_epub(course_slug, year=None):
         print(g.model.courses)
         abort(404)
 
-    # logger.debug(course.base_path)
+    logger.debug(os.getcwd())
 
     img_counter = 1
 
-    epub_path = './' + course.slug + '.epub'
+    tmpdir = tempfile.mkdtemp()
+
+    epub_path = tmpdir + '/course.epub'
 
     if (os.path.exists(epub_path)):
         os.remove(epub_path)
@@ -269,13 +275,14 @@ def course_as_epub(course_slug, year=None):
             # je nutné upravit adresy img
             chap_tree = html.fromstring(lesson_chapter_html_raw).getroottree()
 
-            sols = chap_tree.findall('div[@class="solution"]')
+            sols = chap_tree.findall('.//div[@class="solution"]')
             for sol in sols:
-                sol.getparent().remove(sol)
+              logger.debug(sol.attrib['id'])
+              sol.getparent().remove(sol)
 
-            images = chap_tree.findall('img')
+            images = chap_tree.findall('.//img')
             for image in images:
-                img_base_name = os.path.basename(image['src'])
+                img_base_name = os.path.basename(image.attrib['src'])
                 static = lesson.static_files[img_base_name]
                 image_path = static.path
 
@@ -287,7 +294,7 @@ def course_as_epub(course_slug, year=None):
 
                 image.set('src', 'images/%s' % image_in_epub)
 
-                with open(image_path, 'rb') as img:
+                with course.renderer.get_path_or_file(image_path) as img:
                     epub_course.add_image(image_in_epub, img.read())
 
             lesson_chapter_html = html.tostring(chap_tree, encoding='unicode')
@@ -296,9 +303,13 @@ def course_as_epub(course_slug, year=None):
                     lesson_chapter_html,
                     parent = head_chapter)
 
-    epub_course.save('./' + course.slug + '.epub')
+    epub_course.save(epub_path)
 
-    return send_from_directory('.', course.slug + '.epub', cache_timeout = 0)
+    try:
+      return send_file(epub_path, as_attachment=True)
+    finally:
+      os.unlink(epub_path)
+      os.rmdir(tmpdir)
 
 
 @route('/<course:course_slug>/sessions/<session_slug>/',
