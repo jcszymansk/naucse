@@ -12,7 +12,8 @@ from naucse.urlconverters import register_url_converters
 from naucse.templates import setup_jinja_env
 
 import mkepub
-from bs4 import BeautifulSoup
+
+import lxml.html as html
 
 
 app = Flask('naucse')
@@ -209,14 +210,14 @@ def course_as_epub(course_slug, year=None):
 
     img_counter = 1
 
-    epub_path = str(course.base_path) + '/' + course.slug + '.epub'
+    epub_path = './' + course.slug + '.epub'
 
     if (os.path.exists(epub_path)):
         os.remove(epub_path)
 
     epub_course = mkepub.Book(course.title, language='cs')
 
-    course_url =  'file://' + str(course.base_path)
+    # course_url =  'file://' + str(course.base_path)
 
     for session_slug in course.sessions:
         session = course.sessions[session_slug]
@@ -242,13 +243,13 @@ def course_as_epub(course_slug, year=None):
 
 
             # je nutné upravit adresy img
-            chap_tree = BeautifulSoup(lesson_chapter_html_raw, 'html.parser')
+            chap_tree = html.fromstring(lesson_chapter_html_raw).getroottree()
 
-            sols = chap_tree.find_all('div', class_='solution')
+            sols = chap_tree.findall('div[@class="solution"]')
             for sol in sols:
-                sol.decompose()
+                sol.getparent().remove(sol)
 
-            images = chap_tree.find_all('img')
+            images = chap_tree.findall('img')
             for image in images:
                 img_base_name = os.path.basename(image['src'])
                 static = lesson.static_files[img_base_name]
@@ -260,20 +261,20 @@ def course_as_epub(course_slug, year=None):
 
                 # logger.debug(image_path)
 
-                image['src'] = 'images/%s' % image_in_epub
+                image.set('src', 'images/%s' % image_in_epub)
 
                 with open(image_path, 'rb') as img:
                     epub_course.add_image(image_in_epub, img.read())
 
-            lesson_chapter_html = str(chap_tree)
+            lesson_chapter_html = html.tostring(chap_tree, encoding='unicode')
 
             epub_course.add_page(material.title or 'bez titulu',
                     lesson_chapter_html,
                     parent = head_chapter)
 
-    epub_course.save(str(course.base_path) +  '/' + course.slug + '.epub')
+    epub_course.save('./' + course.slug + '.epub')
 
-    return send_from_directory(course.base_path, course.slug + '.epub', cache_timeout = 0)
+    return send_from_directory('.', course.slug + '.epub', cache_timeout = 0)
 
 
 @app.route('/<course:course_slug>/sessions/<session_slug>/',
